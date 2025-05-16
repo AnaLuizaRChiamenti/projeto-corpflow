@@ -1,95 +1,113 @@
+'use client';
+
 import Image from "next/image";
-import styles from "./page.module.css";
+import { useState } from "react";
+import Link from "next/link";
+import "../css/login.css"; 
 
-export default function Home() {
+export default function HomePage() {
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const handleLogin = () => {
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+    const role = document.getElementById("userType").value;
+
+    if (!username || !password) {
+      setErrorMsg("Preencha todos os campos!");
+      return;
+    }
+
+    const users = JSON.parse(localStorage.getItem("users")) || [];
+
+    const user = users.find(
+      u => u.username === username && u.password === password && u.role === role
+    );
+
+    if (!user) {
+      setErrorMsg("Usuário ou senha incorretos!");
+      return;
+    } else{
+      localStorage.setItem("userLogado", JSON.stringify(user));
+      window.location.href = '/dashboard'; 
+    }
+    
+  };
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>src/app/page.js</code>.
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
+    <div className="container">
+      <div className="left-section">
+        <div className="image-wrapper">
+          <Image
+            src="https://i.postimg.cc/xTDdDRT3/Captura-de-tela-2025-04-24-144543.png"
+            alt="aviso de feriado"
+            className="image"
+            width={500}
+            height={24}
+          />
         </div>
-      </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+      </div>
+
+      <div className="right-section">
+        <div className="login-box">
           <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+            src="https://i.postimg.cc/rF05ggZG/corpflow.png"
+            alt="corpflow logo"
+            className="logo"  
+            width={250}
+            height={200}
           />
-          Learn
-        </a>
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+          {errorMsg && <div className="error-message">{errorMsg}</div>}
+
+          <div className="dropdown-container">
+            <label htmlFor="userType">Entrar como:</label>
+            <select id="userType">
+              <option value="gerente">Gerente</option>
+              <option value="funcionario">Funcionário</option>
+            </select>
+          </div>
+
+          
+
+          <div className="input-group">
+            <label>Usuário</label>
+            <input type="text" id="username" placeholder="Digite seu usuário" />
+          </div>
+
+          <div className="input-group">
+            <label>Senha</label>
+            <input type="password" id="password" placeholder="Digite sua senha" />
+          </div>
+
+          <button className="login-button" id="loginButton" onClick={handleLogin}>Entrar</button>
+          <p className="cadastro-text">
+            Ainda não tem conta? <Link href="/cadastro" className="cadastro-link">Cadastre-se</Link>
+          </p>
+
+          <div className="social-icons">
+            <Link href="https://www.instagram.com/corpflow/" target="_blank">
+              <Image src="https://i.postimg.cc/yNxkL8vJ/1200px-Instagram-icon.png" alt="Instagram" width={24} height={24}/>
+            </Link>
+            <Link href="https://www.facebook.com/p/CorpFlow-100063545143848/" target="_blank">
+              <Image src="https://i.postimg.cc/2SfQ9hZ1/1200px-2023-Facebook-icon-svg.png" alt="Facebook" width={24} height={24}/>
+            </Link>
+            <Link href="https://www.linkedin.com/company/corpflow/" target="_blank">
+              <Image src="https://i.postimg.cc/zBjKWdjC/linkedin-83.png" alt="LinkedIn" width={24} height={24}/>
+            </Link>
+          </div>
+
+          <div className="footer">
+            <p>
+              Suporte CorpFlow <br />
+              (51) 3333-4444 <br />
+              <Link href="https://www.corpflow.com.br" target="_blank">
+                www.corpflow.com.br
+              </Link>
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
