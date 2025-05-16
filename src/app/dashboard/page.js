@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from "react";
@@ -37,7 +36,6 @@ const TaskCard = ({ task, index, moveCard, listId, onDropBlock, role }) => {
       <p>{task.description}</p>
       <div className="task-card-footer">
         <span className="due-date">Prazo: {task.dueDate}</span>
-        <div className="avatar">{task.assignee.substring(0, 2).toUpperCase()}</div>
       </div>
       <div className="task-blocks">
         {task.blocks?.map((block, idx) => (
@@ -133,50 +131,75 @@ export default function Dashboard() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [showTaskDetails, setShowTaskDetails] = useState(null);
-  const [newTask, setNewTask] = useState({ title: "", description: "", dueDate: "", priority: "média", assignee: "" });
+  const [newTask, setNewTask] = useState({ title: "", description: "", dueDate: "", priority: "média" });
   const [errorMsg, setErrorMsg] = useState("");
-  const [completedTasks, setCompletedTasks] = useState(() => {
-    const savedCompletedTasks = localStorage.getItem("completedTasks");
-    try {
-      return savedCompletedTasks ? JSON.parse(savedCompletedTasks) : [];
-    } catch (e) {
-      return [];
-    }
-  });
+  const [completedTasks, setCompletedTasks] = useState([]);
+  const [tasks, setTasks] = useState([]);
 
-  const [tasks, setTasks] = useState(() => {
-    const savedTasks = localStorage.getItem("sharedTasks");
-    try {
-      const parsedTasks = savedTasks ? JSON.parse(savedTasks) : [];
-      return parsedTasks.sort((a, b) => {
-        const priorityOrder = { alta: 3, média: 2, baixa: 1 };
-        const priorityA = priorityOrder[a.priority.toLowerCase()] || 0;
-        const priorityB = priorityOrder[b.priority.toLowerCase()] || 0;
-        return priorityB - priorityA;
-      });
-    } catch (e) {
-      return [];
-    }
-  });
+  const validateTask = (task) => {
+    return (
+      task &&
+      typeof task.id === 'number' &&
+      typeof task.title === 'string' &&
+      typeof task.columnId === 'string' &&
+      ['todo', 'waitingApproval', 'inProgress'].includes(task.columnId)
+    );
+  };
 
   useEffect(() => {
-    const userLogado = JSON.parse(localStorage.getItem("userLogado"));
-    if (userLogado) {
-      setUser(userLogado);
+    if (typeof window !== 'undefined') {
+      const userLogado = JSON.parse(localStorage.getItem("userLogado"));
+      if (userLogado) {
+        setUser(userLogado);
+      } else {
+        window.location.href = "/";
+      }
       setIsLoading(false);
-    } else {
-      setIsLoading(false);
-      window.location.href = "/";
+
+      const savedCompletedTasks = localStorage.getItem("completedTasks");
+      try {
+        const parsedCompletedTasks = savedCompletedTasks ? JSON.parse(savedCompletedTasks) : [];
+        setCompletedTasks(parsedCompletedTasks);
+      } catch (e) {
+        setErrorMsg("Erro ao carregar tarefas concluídas.");
+        setCompletedTasks([]);
+      }
+
+      const savedTasks = localStorage.getItem("sharedTasks");
+      try {
+        const parsedTasks = savedTasks ? JSON.parse(savedTasks) : [];
+        const validTasks = parsedTasks.filter(validateTask);
+        setTasks(
+          validTasks.sort((a, b) => {
+            const priorityOrder = { alta: 3, média: 2, baixa: 1 };
+            const priorityA = priorityOrder[a.priority.toLowerCase()] || 0;
+            const priorityB = priorityOrder[b.priority.toLowerCase()] || 0;
+            return priorityB - priorityA;
+          })
+        );
+      } catch (e) {
+        setErrorMsg("Erro ao carregar tarefas.");
+        setTasks([]);
+      }
     }
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem("sharedTasks", JSON.stringify(tasks));
-      localStorage.setItem("completedTasks", JSON.stringify(completedTasks));
-      console.log("Updated completedTasks:", completedTasks); // Debug log
-    } catch (e) {
-      console.error("Erro ao salvar no localStorage:", e);
+    if (errorMsg) {
+      const timer = setTimeout(() => setErrorMsg(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMsg]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem("sharedTasks", JSON.stringify(tasks));
+        localStorage.setItem("completedTasks", JSON.stringify(completedTasks));
+      } catch (e) {
+        console.error("Erro ao salvar no localStorage:", e);
+        setErrorMsg("Erro ao salvar dados. Verifique o armazenamento do navegador.");
+      }
     }
   }, [tasks, completedTasks]);
 
@@ -197,9 +220,7 @@ export default function Dashboard() {
 
     tasks.forEach((task) => {
       if (task.completed) return;
-      if (user.role === "gerente" || task.assignee === user.name) {
-        columns[task.columnId].items.push(task);
-      }
+      columns[task.columnId].items.push(task);
     });
 
     Object.keys(columns).forEach((colId) => {
@@ -231,7 +252,7 @@ export default function Dashboard() {
   };
 
   const removeColumn = (columnId) => {
-    if (["todo", "waitingApproval", "inProgress"].includes(columnId))return;
+    if (["todo", "waitingApproval", "inProgress"].includes(columnId)) return;
     setTasks((prevTasks) => prevTasks.filter((t) => t.columnId !== columnId));
   };
 
@@ -249,19 +270,11 @@ export default function Dashboard() {
       !newTask.description.trim() ||
       !newTask.dueDate.match(/^\d{8}$/) ||
       !isValidDate(newTask.dueDate) ||
-      !["alta", "média", "baixa"].includes(newTask.priority.toLowerCase()) ||
-      !newTask.assignee.trim()
+      !["alta", "média", "baixa"].includes(newTask.priority.toLowerCase())
     ) {
       setErrorMsg(
-        "Preencha todos os campos corretamente! O prazo deve ser no formato DDMMAAAA (ex.: 15052025), uma data válida, e um funcionário deve ser selecionado."
+        "Preencha todos os campos corretamente! O prazo deve ser no formato DDMMAAAA (ex.: 15052025) e uma data válida."
       );
-      return;
-    }
-
-    const users = JSON.parse(localStorage.getItem("users")) || [];
-    const assigneeExists = users.find((u) => u.name === newTask.assignee && u.role === "funcionario");
-    if (!assigneeExists) {
-      setErrorMsg("Funcionário não encontrado!");
       return;
     }
 
@@ -273,7 +286,6 @@ export default function Dashboard() {
       description: newTask.description,
       priority: newTask.priority.toLowerCase(),
       dueDate: formattedDate,
-      assignee: newTask.assignee,
       createdBy: user.name,
       columnId: "todo",
       blocks: [],
@@ -281,7 +293,7 @@ export default function Dashboard() {
     };
 
     setTasks((prevTasks) => sortTasksByPriority([...prevTasks, task]));
-    setNewTask({ title: "", description: "", dueDate: "", priority: "média", assignee: "" });
+    setNewTask({ title: "", description: "", dueDate: "", priority: "média" });
     setShowNewTaskModal(false);
     setErrorMsg("");
   };
@@ -298,6 +310,11 @@ export default function Dashboard() {
 
       if (blockType === "Aprovado" && !task.blocks?.includes("Verificado")) {
         setErrorMsg("Adicione um bloco VERIFICAR antes de APROVAR!");
+        return prevTasks;
+      }
+
+      if (blockType === "Concluído" && (!task.blocks?.includes("Verificado") || !task.blocks?.includes("Aprovado"))) {
+        setErrorMsg("A tarefa deve ser VERIFICADA e APROVADA antes de ser concluída!");
         return prevTasks;
       }
 
@@ -320,10 +337,8 @@ export default function Dashboard() {
                 title: task.title,
                 description: task.description,
                 dueDate: task.dueDate,
-                assignee: task.assignee, // Include assignee for filtering
               },
             ];
-            console.log("New completedTasks:", updatedCompletedTasks); // Debug log
             return updatedCompletedTasks;
           });
         }
@@ -367,7 +382,7 @@ export default function Dashboard() {
   }
 
   if (!user) {
-    return null; // Redirecionamento será tratado pelo useEffect
+    return null;
   }
 
   return (
@@ -429,15 +444,13 @@ export default function Dashboard() {
               <p>Nenhuma tarefa concluída.</p>
             ) : (
               <ul>
-                {completedTasks
-                  .filter((task) => user.role === "gerente" || task.assignee === user.name)
-                  .map((task) => (
-                    <li key={task.id}>
-                      <button className="completed-task" onClick={() => setShowTaskDetails(task)}>
-                        {task.title}
-                      </button>
-                    </li>
-                  ))}
+                {completedTasks.map((task) => (
+                  <li key={task.id}>
+                    <button className="completed-task" onClick={() => setShowTaskDetails(task)}>
+                      {task.title}
+                    </button>
+                  </li>
+                ))}
               </ul>
             )}
           </div>
@@ -561,16 +574,6 @@ export default function Dashboard() {
                   <option value="média">Média</option>
                   <option value="baixa">Baixa</option>
                 </select>
-              </div>
-              <div className="input-group">
-                <label htmlFor="taskAssignee">Atribuir a (nome do funcionário)</label>
-                <input
-                  type="text"
-                  id="taskAssignee"
-                  value={newTask.assignee}
-                  onChange={(e) => setNewTask({ ...newTask, assignee: e.target.value })}
-                  placeholder="Digite o nome do funcionário"
-                />
               </div>
               {errorMsg && <div className="error-message">{errorMsg}</div>}
             </div>
