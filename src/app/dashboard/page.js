@@ -28,7 +28,7 @@ const TaskCard = ({ task, index, moveCard, listId, onDropBlock, role }) => {
   });
 
   return (
-    <div ref={(node) => drag(drop(node))} className="task-card" style={{ opacity: isDragging ? 0.5 : 1 }}>
+    <div ref={(node) => drag(drop(node))} className={`task-card ${task.completed ? "completed-task-style" : ""}`} style={{ opacity: isDragging ? 0.5 : 1 }}>
       <div className="task-card-header">
         <h4>{task.title}</h4>
         <span className={`priority ${task.priority.toLowerCase()}`}>{task.priority}</span>
@@ -65,7 +65,9 @@ const Block = ({ type, role }) => {
   );
 };
 
-const TaskList = ({ title, tasks, listId, moveCard, onRemoveColumn, onDropBlock, role }) => {
+const TaskList = ({ title, tasks, listId, moveCard, onRemoveColumn, onDropBlock, role, maxTasks = Infinity, setShowAllCompletedModal }) => {
+  const displayedTasks = tasks.slice(0, maxTasks);
+
   const [, drop] = useDrop({
     accept: ItemTypes.CARD,
     drop(item) {
@@ -88,7 +90,7 @@ const TaskList = ({ title, tasks, listId, moveCard, onRemoveColumn, onDropBlock,
         <h3>{title}</h3>
         <div className="column-header-actions">
           <span className="task-count">{tasks.length}</span>
-          {!["todo", "waitingApproval", "inProgress"].includes(listId) && role === "gerente" && (
+          {!["todo", "waitingApproval", "inProgress", "concluído"].includes(listId) && role === "gerente" && (
             <button className="remove-column-btn" onClick={() => onRemoveColumn(listId)}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -109,7 +111,7 @@ const TaskList = ({ title, tasks, listId, moveCard, onRemoveColumn, onDropBlock,
         </div>
       </div>
       <div className="task-list">
-        {tasks.map((task, index) => (
+        {displayedTasks.map((task, index) => (
           <TaskCard
             key={task.id}
             task={task}
@@ -120,6 +122,11 @@ const TaskList = ({ title, tasks, listId, moveCard, onRemoveColumn, onDropBlock,
             role={role}
           />
         ))}
+        {listId === "concluído" && tasks.length > 5 && (
+          <button className="show-more-btn" onClick={() => setShowAllCompletedModal(true)}>
+            Mostrar mais
+          </button>
+        )}
       </div>
     </div>
   );
@@ -131,6 +138,7 @@ export default function Dashboard() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [showTaskDetails, setShowTaskDetails] = useState(null);
+  const [showAllCompletedModal, setShowAllCompletedModal] = useState(false);
   const [newTask, setNewTask] = useState({ title: "", description: "", dueDate: "", priority: "média" });
   const [errorMsg, setErrorMsg] = useState("");
   const [completedTasks, setCompletedTasks] = useState([]);
@@ -142,7 +150,7 @@ export default function Dashboard() {
       typeof task.id === 'number' &&
       typeof task.title === 'string' &&
       typeof task.columnId === 'string' &&
-      ['todo', 'waitingApproval', 'inProgress'].includes(task.columnId)
+      ['todo', 'waitingApproval', 'inProgress', 'concluído'].includes(task.columnId)
     );
   };
 
@@ -198,7 +206,6 @@ export default function Dashboard() {
         localStorage.setItem("completedTasks", JSON.stringify(completedTasks));
       } catch (e) {
         console.error("Erro ao salvar no localStorage:", e);
-        setErrorMsg("Erro ao salvar dados. Verifique o armazenamento do navegador.");
       }
     }
   }, [tasks, completedTasks]);
@@ -209,6 +216,7 @@ export default function Dashboard() {
         todo: { title: "A fazer", items: [] },
         waitingApproval: { title: "Esperando Aprovação", items: [] },
         inProgress: { title: "Em andamento", items: [] },
+        concluído: { title: "Concluído", items: [] },
       };
     }
 
@@ -216,11 +224,15 @@ export default function Dashboard() {
       todo: { title: "A fazer", items: [] },
       waitingApproval: { title: "Esperando Aprovação", items: [] },
       inProgress: { title: "Em andamento", items: [] },
+      concluído: { title: "Concluído", items: [] },
     };
 
     tasks.forEach((task) => {
-      if (task.completed) return;
-      columns[task.columnId].items.push(task);
+      if (task.completed) {
+        columns.concluído.items.push(task);
+      } else {
+        columns[task.columnId].items.push(task);
+      }
     });
 
     Object.keys(columns).forEach((colId) => {
@@ -252,34 +264,27 @@ export default function Dashboard() {
   };
 
   const removeColumn = (columnId) => {
-    if (["todo", "waitingApproval", "inProgress"].includes(columnId)) return;
+    if (["todo", "waitingApproval", "inProgress", "concluído"].includes(columnId)) return;
     setTasks((prevTasks) => prevTasks.filter((t) => t.columnId !== columnId));
-  };
-
-  const isValidDate = (dateStr) => {
-    const day = parseInt(dateStr.slice(0, 2));
-    const month = parseInt(dateStr.slice(2, 4));
-    const year = parseInt(dateStr.slice(4, 8));
-    const date = new Date(year, month - 1, day);
-    return date.getFullYear() === year && date.getMonth() + 1 === month && date.getDate() === day;
   };
 
   const addNewTask = () => {
     if (
       !newTask.title.trim() ||
       !newTask.description.trim() ||
-      !newTask.dueDate.match(/^\d{8}$/) ||
-      !isValidDate(newTask.dueDate) ||
+      !newTask.dueDate ||
       !["alta", "média", "baixa"].includes(newTask.priority.toLowerCase())
     ) {
       setErrorMsg(
-        "Preencha todos os campos corretamente! O prazo deve ser no formato DDMMAAAA (ex.: 15052025) e uma data válida."
+        "Preencha todos os campos corretamente!"
       );
       return;
     }
 
     const newTaskId = Date.now();
-    const formattedDate = `${newTask.dueDate.slice(0, 2)}/${newTask.dueDate.slice(2, 4)}/${newTask.dueDate.slice(4, 8)}`;
+    const [year, month, day] = newTask.dueDate.split("-");
+    const formattedDate = `${day}/${month}/${year}`;
+
     const task = {
       id: newTaskId,
       title: newTask.title,
@@ -329,6 +334,7 @@ export default function Dashboard() {
           newColumnId = "inProgress";
         } else if (blockType === "Concluído") {
           task.completed = true;
+          newColumnId = "concluído";
           setCompletedTasks((prev) => {
             const updatedCompletedTasks = [
               ...prev.filter((t) => t.id !== taskId),
@@ -375,7 +381,7 @@ export default function Dashboard() {
 
   const availableBlocks = user?.role === "gerente" ? ["Verificado", "Aprovado", "Concluído"] : ["Concluído"];
   const columns = getFilteredColumns();
-  const columnOrder = ["todo", "waitingApproval", "inProgress"];
+  const columnOrder = ["todo", "waitingApproval", "inProgress", "concluído"];
 
   if (isLoading) {
     return <div>Carregando...</div>;
@@ -430,31 +436,34 @@ export default function Dashboard() {
           </button>
         </div>
         <div className="sidebar-content">
-          <div className="section">
-            <h3>Blocos disponíveis</h3>
-            <div className="block-section">
-              {availableBlocks.map((block) => (
-                <Block key={block} type={block} role={user?.role} />
-              ))}
-            </div>
-          </div>
-          <div className="section">
-            <h3>Tarefas concluídas</h3>
-            {completedTasks.length === 0 ? (
-              <p>Nenhuma tarefa concluída.</p>
-            ) : (
-              <ul>
-                {completedTasks.map((task) => (
-                  <li key={task.id}>
-                    <button className="completed-task" onClick={() => setShowTaskDetails(task)}>
-                      {task.title}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+        <div className="section">
+          <h3>Blocos disponíveis</h3>
+          <div className="block-section">
+            {availableBlocks.map((block) => (
+              <Block key={block} type={block} role={user?.role} />
+            ))}
           </div>
         </div>
+        <div className="section completed-tasks-section">
+          <h3>Tarefas concluídas: {completedTasks.length}</h3>
+          <div className="completed-tasks-list">
+            {completedTasks.slice(0, 6).map((task) => (
+              <button
+                key={task.id}
+                className="completed-task completed-task-style"
+                onClick={() => setShowTaskDetails(task)}
+              >
+                {task.title}
+              </button>
+            ))}
+          </div>
+          {completedTasks.length > 6 && (
+            <button className="show-more-btn" onClick={() => setShowAllCompletedModal(true)}>
+              Mostrar mais
+            </button>
+          )}
+        </div>
+      </div>
       </div>
       <div className={`main-content ${sidebarCollapsed ? "expanded" : ""}`}>
         <div className="header">
@@ -505,6 +514,8 @@ export default function Dashboard() {
                   onRemoveColumn={removeColumn}
                   onDropBlock={onDropBlock}
                   role={user?.role}
+                  maxTasks={columnId === "concluído" ? 4 : Infinity}
+                  setShowAllCompletedModal={setShowAllCompletedModal}
                 />
               ))}
           </div>
@@ -554,13 +565,12 @@ export default function Dashboard() {
                 />
               </div>
               <div className="input-group">
-                <label htmlFor="taskDueDate">Prazo (DDMMAAAA)</label>
+                <label htmlFor="taskDueDate">Prazo</label>
                 <input
-                  type="text"
+                  type="date"
                   id="taskDueDate"
                   value={newTask.dueDate}
                   onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
-                  placeholder="Ex.: 15052025"
                 />
               </div>
               <div className="input-group">
@@ -588,8 +598,52 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-      {showTaskDetails && (
+      {showAllCompletedModal && (
         <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3>Todas as Tarefas Concluídas</h3>
+              <button className="close-modal" onClick={() => setShowAllCompletedModal(false)}>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <ul>
+                {completedTasks.map((task) => (
+                  <li
+                    key={task.id}
+                    className="completed-task-style"
+                    onClick={() => setShowTaskDetails(task)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {task.title}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="modal-footer">
+              <button className="confirm-button" onClick={() => setShowAllCompletedModal(false)}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {(showTaskDetails) && (
+        <div className="modal-overlay" style={{ zIndex: showAllCompletedModal ? 1001 : 1000 }}>
           <div className="modal">
             <div className="modal-header">
               <h3>Detalhes da Tarefa</h3>
