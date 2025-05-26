@@ -491,6 +491,12 @@ body {
     color: #666;
 }
 
+.task-card-footer{
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    color: #666;
+}
+
 .task-card-footer {
     display: flex;
     justify-content: space-between;

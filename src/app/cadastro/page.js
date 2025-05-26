@@ -28,9 +28,8 @@ export default function CadastroPage() {
       return;
     }
 
-    const usersSalvos = JSON.parse(localStorage.getItem("users")) || [];
+    const usersSalvos = JSON.parse(sessionStorage.getItem("users")) || [];
     const userExistente = usersSalvos.find(u => u.username === username);
-    const nameExistente = usersSalvos.find(u => u.name === name);
 
     if (userExistente) {
       setErrorMsg("Usuário já existe!");
@@ -38,15 +37,9 @@ export default function CadastroPage() {
       return;
     }
 
-    if (nameExistente) {
-      setErrorMsg("Nome já está em uso!");
-      setSuccessMsg('');
-      return;
-    }
-
     const novoUsuario = { name, username, password, role };
     usersSalvos.push(novoUsuario);
-    localStorage.setItem("users", JSON.stringify(usersSalvos));
+    sessionStorage.setItem("users", JSON.stringify(usersSalvos));
 
     setErrorMsg('');
     setSuccessMsg("Usuário cadastrado com sucesso!");
