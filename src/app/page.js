@@ -18,7 +18,7 @@ export default function HomePage() {
       return;
     }
 
-    const users = JSON.parse(localStorage.getItem("users")) || [];
+    const users = JSON.parse(sessionStorage.getItem("users")) || [];
 
     const user = users.find(
       u => u.username === username && u.password === password && u.role === role
@@ -28,7 +28,7 @@ export default function HomePage() {
       setErrorMsg("Usuário ou senha incorretos!");
       return;
     } else{
-      localStorage.setItem("userLogado", JSON.stringify(user));
+      sessionStorage.setItem("userLogado", JSON.stringify(user));
       window.location.href = '/dashboard'; 
     }
     

@@ -6,11 +6,13 @@ import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import "../../css/dashboard.css";
 
+// Define os tipos de itens para drag-and-drop
 const ItemTypes = {
   CARD: "CARD",
   BLOCK: "BLOCK",
 };
 
+// Componente para renderizar um cartão de tarefa
 const TaskCard = ({ task, index, moveCard, listId, onDropBlock, role }) => {
   const [{ isDragging }, drag] = useDrag({
     type: ItemTypes.CARD,
@@ -28,7 +30,7 @@ const TaskCard = ({ task, index, moveCard, listId, onDropBlock, role }) => {
   });
 
   return (
-    <div ref={(node) => drag(drop(node))} className="task-card" style={{ opacity: isDragging ? 0.5 : 1 }}>
+    <div ref={(node) => drag(drop(node))} className={`task-card ${task.completed ? "completed-task-style" : ""}`} style={{ opacity: isDragging ? 0.5 : 1 }}>
       <div className="task-card-header">
         <h4>{task.title}</h4>
         <span className={`priority ${task.priority.toLowerCase()}`}>{task.priority}</span>
@@ -36,6 +38,9 @@ const TaskCard = ({ task, index, moveCard, listId, onDropBlock, role }) => {
       <p>{task.description}</p>
       <div className="task-card-footer">
         <span className="due-date">Prazo: {task.dueDate}</span>
+      </div>
+      <div className="task-card-footer">
+        <span className="assigneedTo">Destinatário: {task.assignee}</span>
       </div>
       <div className="task-blocks">
         {task.blocks?.map((block, idx) => (
@@ -48,6 +53,7 @@ const TaskCard = ({ task, index, moveCard, listId, onDropBlock, role }) => {
   );
 };
 
+// Componente para renderizar um bloco arrastável
 const Block = ({ type, role }) => {
   const [{ isDragging }, drag] = useDrag({
     type: ItemTypes.BLOCK,
@@ -65,7 +71,10 @@ const Block = ({ type, role }) => {
   );
 };
 
-const TaskList = ({ title, tasks, listId, moveCard, onRemoveColumn, onDropBlock, role }) => {
+// Componente para renderizar uma lista de tarefas (coluna do Kanban)
+const TaskList = ({ title, tasks, listId, moveCard, onRemoveColumn, onDropBlock, role, maxTasks = Infinity, setShowAllCompletedModal }) => {
+  const displayedTasks = tasks.slice(0, maxTasks);
+
   const [, drop] = useDrop({
     accept: ItemTypes.CARD,
     drop(item) {
@@ -88,7 +97,7 @@ const TaskList = ({ title, tasks, listId, moveCard, onRemoveColumn, onDropBlock,
         <h3>{title}</h3>
         <div className="column-header-actions">
           <span className="task-count">{tasks.length}</span>
-          {!["todo", "waitingApproval", "inProgress"].includes(listId) && role === "gerente" && (
+          {!["todo", "waitingApproval", "inProgress", "concluído"].includes(listId) && role === "gerente" && (
             <button className="remove-column-btn" onClick={() => onRemoveColumn(listId)}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -109,7 +118,7 @@ const TaskList = ({ title, tasks, listId, moveCard, onRemoveColumn, onDropBlock,
         </div>
       </div>
       <div className="task-list">
-        {tasks.map((task, index) => (
+        {displayedTasks.map((task, index) => (
           <TaskCard
             key={task.id}
             task={task}
@@ -120,70 +129,93 @@ const TaskList = ({ title, tasks, listId, moveCard, onRemoveColumn, onDropBlock,
             role={role}
           />
         ))}
+        {listId === "concluído" && tasks.length > 5 && (
+          <button className="show-more-btn" onClick={() => setShowAllCompletedModal(true)}>
+            Mostrar mais
+          </button>
+        )}
       </div>
     </div>
   );
 };
 
+// Componente principal do dashboard
 export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [showTaskDetails, setShowTaskDetails] = useState(null);
-  const [newTask, setNewTask] = useState({ title: "", description: "", dueDate: "", priority: "média" });
+  const [showAllCompletedModal, setShowAllCompletedModal] = useState(false);
+  const [newTask, setNewTask] = useState({ title: "", description: "", dueDate: "", priority: "média", assignee: "" });
   const [errorMsg, setErrorMsg] = useState("");
   const [completedTasks, setCompletedTasks] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [employees, setEmployees] = useState([]);
 
+  // Valida a estrutura de uma tarefa
   const validateTask = (task) => {
     return (
       task &&
       typeof task.id === 'number' &&
       typeof task.title === 'string' &&
       typeof task.columnId === 'string' &&
-      ['todo', 'waitingApproval', 'inProgress'].includes(task.columnId)
+      ['todo', 'waitingApproval', 'inProgress', "concluído"].includes(task.columnId)
     );
   };
 
+  // Carrega usuário, tarefas, tarefas concluídas e funcionários do sessionStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const userLogado = JSON.parse(localStorage.getItem("userLogado"));
+      const userLogado = JSON.parse(sessionStorage.getItem("userLogado"));
       if (userLogado) {
         setUser(userLogado);
+        
+        // Carrega tarefas compartilhadas
+        try {
+          const savedTasks = sessionStorage.getItem("sharedTasks");
+          const parsedTasks = savedTasks ? JSON.parse(savedTasks) : [];
+          const validTasks = parsedTasks.filter(validateTask);
+          setTasks(
+            validTasks.sort((a, b) => {
+              const priorityOrder = { alta: 3, média: 2, baixa: 1 };
+              const priorityA = priorityOrder[a.priority.toLowerCase()] || 0;
+              const priorityB = priorityOrder[b.priority.toLowerCase()] || 0;
+              return priorityB - priorityA;
+            })
+          );
+        } catch (e) {
+          setErrorMsg("Erro ao carregar tarefas.");
+          setTasks([]);
+        }
+
+        // Carrega tarefas concluídas compartilhadas
+        try {
+          const savedCompletedTasks = sessionStorage.getItem("completedTasks");
+          const parsedCompletedTasks = savedCompletedTasks ? JSON.parse(savedCompletedTasks) : [];
+          setCompletedTasks(parsedCompletedTasks);
+        } catch (e) {
+          setErrorMsg("Erro ao carregar tarefas concluídas.");
+          setCompletedTasks([]);
+        }
+
+        // Carrega lista de funcionários
+        try {
+          const users = JSON.parse(sessionStorage.getItem("users")) || [];
+          const employeeList = users.filter(u => u.role === "funcionario");
+          setEmployees(employeeList);
+        } catch (e) {
+          setErrorMsg("Erro ao carregar lista de funcionários.");
+          setEmployees([]);
+        }
       } else {
         window.location.href = "/";
       }
       setIsLoading(false);
-
-      const savedCompletedTasks = localStorage.getItem("completedTasks");
-      try {
-        const parsedCompletedTasks = savedCompletedTasks ? JSON.parse(savedCompletedTasks) : [];
-        setCompletedTasks(parsedCompletedTasks);
-      } catch (e) {
-        setErrorMsg("Erro ao carregar tarefas concluídas.");
-        setCompletedTasks([]);
-      }
-
-      const savedTasks = localStorage.getItem("sharedTasks");
-      try {
-        const parsedTasks = savedTasks ? JSON.parse(savedTasks) : [];
-        const validTasks = parsedTasks.filter(validateTask);
-        setTasks(
-          validTasks.sort((a, b) => {
-            const priorityOrder = { alta: 3, média: 2, baixa: 1 };
-            const priorityA = priorityOrder[a.priority.toLowerCase()] || 0;
-            const priorityB = priorityOrder[b.priority.toLowerCase()] || 0;
-            return priorityB - priorityA;
-          })
-        );
-      } catch (e) {
-        setErrorMsg("Erro ao carregar tarefas.");
-        setTasks([]);
-      }
     }
   }, []);
 
+  // Limpa mensagens de erro após 5 segundos
   useEffect(() => {
     if (errorMsg) {
       const timer = setTimeout(() => setErrorMsg(''), 5000);
@@ -191,24 +223,26 @@ export default function Dashboard() {
     }
   }, [errorMsg]);
 
+  // Salva tarefas no sessionStorage
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && user) {
       try {
-        localStorage.setItem("sharedTasks", JSON.stringify(tasks));
-        localStorage.setItem("completedTasks", JSON.stringify(completedTasks));
+        sessionStorage.setItem("sharedTasks", JSON.stringify(tasks));
+        sessionStorage.setItem("completedTasks", JSON.stringify(completedTasks));
       } catch (e) {
-        console.error("Erro ao salvar no localStorage:", e);
-        setErrorMsg("Erro ao salvar dados. Verifique o armazenamento do navegador.");
+        console.error("Erro ao salvar no sessionStorage:", e);
       }
     }
-  }, [tasks, completedTasks]);
+  }, [tasks, completedTasks, user]);
 
+  // Filtra tarefas por coluna e usuário (para funcionários)
   const getFilteredColumns = () => {
     if (!user) {
       return {
         todo: { title: "A fazer", items: [] },
         waitingApproval: { title: "Esperando Aprovação", items: [] },
         inProgress: { title: "Em andamento", items: [] },
+        concluído: { title: "Concluído", items: [] },
       };
     }
 
@@ -216,11 +250,19 @@ export default function Dashboard() {
       todo: { title: "A fazer", items: [] },
       waitingApproval: { title: "Esperando Aprovação", items: [] },
       inProgress: { title: "Em andamento", items: [] },
+      concluído: { title: "Concluído", items: [] },
     };
 
-    tasks.forEach((task) => {
-      if (task.completed) return;
-      columns[task.columnId].items.push(task);
+    const filteredTasks = user.role === "funcionario" 
+      ? tasks.filter(task => task.assignee === user.username)
+      : tasks;
+
+    filteredTasks.forEach((task) => {
+      if (task.completed) {
+        columns.concluído.items.push(task);
+      } else {
+        columns[task.columnId].items.push(task);
+      }
     });
 
     Object.keys(columns).forEach((colId) => {
@@ -230,6 +272,7 @@ export default function Dashboard() {
     return columns;
   };
 
+  // Ordena tarefas por prioridade
   const sortTasksByPriority = (tasks) => {
     const priorityOrder = { alta: 3, média: 2, baixa: 1 };
     return [...tasks].sort((a, b) => {
@@ -239,6 +282,7 @@ export default function Dashboard() {
     });
   };
 
+  // Move uma tarefa entre colunas
   const moveCard = (cardId, sourceListId, targetListId) => {
     if (sourceListId === targetListId) return;
     setTasks((prevTasks) => {
@@ -251,35 +295,29 @@ export default function Dashboard() {
     });
   };
 
+  // Remove uma coluna personalizada
   const removeColumn = (columnId) => {
-    if (["todo", "waitingApproval", "inProgress"].includes(columnId)) return;
+    if (["todo", "waitingApproval", "inProgress", "concluído"].includes(columnId)) return;
     setTasks((prevTasks) => prevTasks.filter((t) => t.columnId !== columnId));
   };
 
-  const isValidDate = (dateStr) => {
-    const day = parseInt(dateStr.slice(0, 2));
-    const month = parseInt(dateStr.slice(2, 4));
-    const year = parseInt(dateStr.slice(4, 8));
-    const date = new Date(year, month - 1, day);
-    return date.getFullYear() === year && date.getMonth() + 1 === month && date.getDate() === day;
-  };
-
+  // Adiciona uma nova tarefa
   const addNewTask = () => {
     if (
       !newTask.title.trim() ||
       !newTask.description.trim() ||
-      !newTask.dueDate.match(/^\d{8}$/) ||
-      !isValidDate(newTask.dueDate) ||
-      !["alta", "média", "baixa"].includes(newTask.priority.toLowerCase())
+      !newTask.dueDate ||
+      !["alta", "média", "baixa"].includes(newTask.priority.toLowerCase()) ||
+      !newTask.assignee
     ) {
-      setErrorMsg(
-        "Preencha todos os campos corretamente! O prazo deve ser no formato DDMMAAAA (ex.: 15052025) e uma data válida."
-      );
+      setErrorMsg("Preencha todos os campos corretamente!");
       return;
     }
 
     const newTaskId = Date.now();
-    const formattedDate = `${newTask.dueDate.slice(0, 2)}/${newTask.dueDate.slice(2, 4)}/${newTask.dueDate.slice(4, 8)}`;
+    const [year, month, day] = newTask.dueDate.split("-");
+    const formattedDate = `${day}/${month}/${year}`;
+
     const task = {
       id: newTaskId,
       title: newTask.title,
@@ -290,14 +328,16 @@ export default function Dashboard() {
       columnId: "todo",
       blocks: [],
       completed: false,
+      assignee: newTask.assignee,
     };
 
     setTasks((prevTasks) => sortTasksByPriority([...prevTasks, task]));
-    setNewTask({ title: "", description: "", dueDate: "", priority: "média" });
+    setNewTask({ title: "", description: "", dueDate: "", priority: "média", assignee: "" });
     setShowNewTaskModal(false);
     setErrorMsg("");
   };
 
+  // Aplica blocos às tarefas
   const onDropBlock = (taskId, listId, blockType) => {
     setTasks((prevTasks) => {
       const task = prevTasks.find((t) => t.id === taskId);
@@ -329,6 +369,7 @@ export default function Dashboard() {
           newColumnId = "inProgress";
         } else if (blockType === "Concluído") {
           task.completed = true;
+          newColumnId = "concluído";
           setCompletedTasks((prev) => {
             const updatedCompletedTasks = [
               ...prev.filter((t) => t.id !== taskId),
@@ -337,6 +378,7 @@ export default function Dashboard() {
                 title: task.title,
                 description: task.description,
                 dueDate: task.dueDate,
+                assignee: task.assignee,
               },
             ];
             return updatedCompletedTasks;
@@ -354,10 +396,12 @@ export default function Dashboard() {
     setErrorMsg("");
   };
 
+  // Alterna o estado da sidebar
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
   };
 
+  // Gera iniciais do nome do usuário
   const getInitials = (name) => {
     if (!name) return "??";
     const names = name.trim().split(" ");
@@ -368,14 +412,15 @@ export default function Dashboard() {
     return initials || "??";
   };
 
+  // Realiza logout do usuário
   const handleLogout = () => {
-    localStorage.removeItem("userLogado");
+    sessionStorage.removeItem("userLogado");
     window.location.href = "/";
   };
 
   const availableBlocks = user?.role === "gerente" ? ["Verificado", "Aprovado", "Concluído"] : ["Concluído"];
   const columns = getFilteredColumns();
-  const columnOrder = ["todo", "waitingApproval", "inProgress"];
+  const columnOrder = ["todo", "waitingApproval", "inProgress", "concluído"];
 
   if (isLoading) {
     return <div>Carregando...</div>;
@@ -438,20 +483,26 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
-          <div className="section">
-            <h3>Tarefas concluídas</h3>
-            {completedTasks.length === 0 ? (
-              <p>Nenhuma tarefa concluída.</p>
-            ) : (
-              <ul>
-                {completedTasks.map((task) => (
-                  <li key={task.id}>
-                    <button className="completed-task" onClick={() => setShowTaskDetails(task)}>
-                      {task.title}
-                    </button>
-                  </li>
+          <div className="section completed-tasks-section">
+            <h3>Tarefas concluídas: {completedTasks.filter(task => user.role === "gerente" || task.assignee === user.username).length}</h3>
+            <div className="completed-tasks-list">
+              {completedTasks
+                .filter(task => user.role === "gerente" || task.assignee === user.username)
+                .slice(0, 6)
+                .map((task) => (
+                  <button
+                    key={task.id}
+                    className="completed-task completed-task-style"
+                    onClick={() => setShowTaskDetails(task)}
+                  >
+                    {task.title}
+                  </button>
                 ))}
-              </ul>
+            </div>
+            {completedTasks.filter(task => user.role === "gerente" || task.assignee === user.username).length > 6 && (
+              <button className="show-more-btn" onClick={() => setShowAllCompletedModal(true)}>
+                Mostrar mais
+              </button>
             )}
           </div>
         </div>
@@ -505,6 +556,8 @@ export default function Dashboard() {
                   onRemoveColumn={removeColumn}
                   onDropBlock={onDropBlock}
                   role={user?.role}
+                  maxTasks={columnId === "concluído" ? 4 : Infinity}
+                  setShowAllCompletedModal={setShowAllCompletedModal}
                 />
               ))}
           </div>
@@ -554,13 +607,12 @@ export default function Dashboard() {
                 />
               </div>
               <div className="input-group">
-                <label htmlFor="taskDueDate">Prazo (DDMMAAAA)</label>
+                <label htmlFor="taskDueDate">Prazo</label>
                 <input
-                  type="text"
+                  type="date"
                   id="taskDueDate"
                   value={newTask.dueDate}
                   onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
-                  placeholder="Ex.: 15052025"
                 />
               </div>
               <div className="input-group">
@@ -573,6 +625,21 @@ export default function Dashboard() {
                   <option value="alta">Alta</option>
                   <option value="média">Média</option>
                   <option value="baixa">Baixa</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label htmlFor="taskAssignee">Destinatário</label>
+                <select
+                  id="taskAssignee"
+                  value={newTask.assignee}
+                  onChange={(e) => setNewTask({ ...newTask, assignee: e.target.value })}
+                >
+                  <option value="">Selecione um funcionário</option>
+                  {employees.map((employee) => (
+                    <option key={employee.username} value={employee.username}>
+                      {employee.name} ({employee.username})
+                    </option>
+                  ))}
                 </select>
               </div>
               {errorMsg && <div className="error-message">{errorMsg}</div>}
@@ -588,8 +655,54 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-      {showTaskDetails && (
+      {showAllCompletedModal && (
         <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3>Todas as Tarefas Concluídas</h3>
+              <button className="close-modal" onClick={() => setShowAllCompletedModal(false)}>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <ul>
+                {completedTasks
+                  .filter(task => user.role === "gerente" || task.assignee === user.username)
+                  .map((task) => (
+                    <li
+                      key={task.id}
+                      className="completed-task-style"
+                      onClick={() => setShowTaskDetails(task)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {task.title}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+            <div className="modal-footer">
+              <button className="confirm-button" onClick={() => setShowAllCompletedModal(false)}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showTaskDetails && (
+        <div className="modal-overlay" style={{ zIndex: showAllCompletedModal ? 1001 : 1000 }}>
           <div className="modal">
             <div className="modal-header">
               <h3>Detalhes da Tarefa</h3>
@@ -619,6 +732,9 @@ export default function Dashboard() {
               </div>
               <div className="task-detail">
                 <strong>Prazo:</strong> {showTaskDetails.dueDate}
+              </div>
+              <div className="task-detail">
+                <strong>Destinatário:</strong> {showTaskDetails.assignee}
               </div>
             </div>
             <div className="modal-footer">
